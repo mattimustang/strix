@@ -1411,6 +1411,7 @@ class StrixTUIApp(App):  # type: ignore[misc]
             status = agent_data.get("status", "running")
             if status in ["running", "waiting"]:
                 has_active_agents = True
+            if status == "running":
                 num_colors = len(self._sweep_colors)
                 offset = num_colors - 1
                 max_pos = (self._sweep_num_squares - 1) + offset
@@ -1432,26 +1433,25 @@ class StrixTUIApp(App):  # type: ignore[misc]
     def _agent_has_real_activity(self, agent_id: str) -> bool:
         initial_tools = {"scan_start_info", "subagent_start_info"}
 
-        for _exec_id, tool_data in list(self.tracer.tool_executions.items()):
-            if tool_data.get("agent_id") == agent_id:
-                tool_name = tool_data.get("tool_name", "")
-                if tool_name not in initial_tools:
-                    return True
+        agent_data = self.tracer.agents.get(agent_id, {})
+        for exec_id in agent_data.get("tool_executions", []):
+            tool_data = self.tracer.tool_executions.get(exec_id)
+            if tool_data and tool_data.get("tool_name", "") not in initial_tools:
+                return True
 
         streaming = self.tracer.get_streaming_content(agent_id)
         return bool(streaming and streaming.strip())
 
     def _agent_vulnerability_count(self, agent_id: str) -> int:
         count = 0
-        for _exec_id, tool_data in list(self.tracer.tool_executions.items()):
-            if tool_data.get("agent_id") == agent_id:
-                tool_name = tool_data.get("tool_name", "")
-                if tool_name == "create_vulnerability_report":
-                    status = tool_data.get("status", "")
-                    if status == "completed":
-                        result = tool_data.get("result", {})
-                        if isinstance(result, dict) and result.get("success"):
-                            count += 1
+        agent_data = self.tracer.agents.get(agent_id, {})
+        for exec_id in agent_data.get("tool_executions", []):
+            tool_data = self.tracer.tool_executions.get(exec_id)
+            if tool_data and tool_data.get("tool_name") == "create_vulnerability_report":
+                if tool_data.get("status") == "completed":
+                    result = tool_data.get("result", {})
+                    if isinstance(result, dict) and result.get("success"):
+                        count += 1
         return count
 
     def _gather_agent_events(self, agent_id: str) -> list[dict[str, Any]]:
@@ -1466,16 +1466,19 @@ class StrixTUIApp(App):  # type: ignore[misc]
             if msg.get("agent_id") == agent_id
         ]
 
-        tool_events = [
-            {
-                "type": "tool",
-                "timestamp": tool_data["timestamp"],
-                "id": f"tool_{exec_id}",
-                "data": tool_data,
-            }
-            for exec_id, tool_data in list(self.tracer.tool_executions.items())
-            if tool_data.get("agent_id") == agent_id
-        ]
+        agent_data = self.tracer.agents.get(agent_id, {})
+        tool_events = []
+        for exec_id in agent_data.get("tool_executions", []):
+            tool_data = self.tracer.tool_executions.get(exec_id)
+            if tool_data:
+                tool_events.append(
+                    {
+                        "type": "tool",
+                        "timestamp": tool_data["timestamp"],
+                        "id": f"tool_{exec_id}",
+                        "data": tool_data,
+                    }
+                )
 
         events = chat_events + tool_events
         events.sort(key=lambda e: (e["timestamp"], e["id"]))
