@@ -266,6 +266,9 @@ class LLM:
         if messages[-1].get("role") == "assistant" and not self.config.interactive:
             messages.append({"role": "user", "content": "<meta>Continue the task.</meta>"})
 
+        if self._is_anthropic():
+            messages = self._inject_thinking_blocks(messages)
+
         if self._is_anthropic() and self.config.enable_prompt_caching:
             messages = self._add_cache_control(messages)
 
@@ -376,18 +379,44 @@ class LLM:
         except Exception:  # noqa: BLE001
             return False
 
+    def _inject_thinking_blocks(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Convert assistant messages with thinking_blocks top-level key to Anthropic content block format.
+
+        Anthropic requires thinking blocks from assistant responses to be passed back
+        verbatim as content blocks in subsequent turns; LiteLLM doesn't handle the
+        top-level thinking_blocks key we use for storage.
+        """
+        result = []
+        for msg in messages:
+            thinking_blocks = msg.get("thinking_blocks")
+            if thinking_blocks and msg.get("role") == "assistant":
+                content = msg.get("content", "")
+                new_content: list[dict[str, Any]] = list(thinking_blocks)
+                if isinstance(content, str) and content:
+                    new_content.append({"type": "text", "text": content})
+                elif isinstance(content, list):
+                    new_content.extend(content)
+                new_msg = {k: v for k, v in msg.items() if k != "thinking_blocks"}
+                new_msg["content"] = new_content
+                result.append(new_msg)
+            else:
+                result.append(msg)
+        return result
+
     def _strip_images(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
         result = []
         for msg in messages:
             content = msg.get("content")
             if isinstance(content, list):
-                text_parts = []
+                new_content = []
                 for item in content:
-                    if isinstance(item, dict) and item.get("type") == "text":
-                        text_parts.append(item.get("text", ""))
-                    elif isinstance(item, dict) and item.get("type") == "image_url":
-                        text_parts.append("[Image removed - model doesn't support vision]")
-                result.append({**msg, "content": "\n".join(text_parts)})
+                    if isinstance(item, dict) and item.get("type") == "image_url":
+                        new_content.append(
+                            {"type": "text", "text": "[Image removed - model doesn't support vision]"}
+                        )
+                    else:
+                        new_content.append(item)
+                result.append({**msg, "content": new_content})
             else:
                 result.append(msg)
         return result
