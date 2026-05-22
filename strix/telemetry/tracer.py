@@ -57,6 +57,7 @@ class Tracer:
         self.agents: dict[str, dict[str, Any]] = {}
         self.tool_executions: dict[int, dict[str, Any]] = {}
         self.chat_messages: list[dict[str, Any]] = []
+        self.chat_messages_by_agent: dict[str, list[dict[str, Any]]] = {}
         self.streaming_content: dict[str, str] = {}
         self.interrupted_content: dict[str, str] = {}
 
@@ -474,6 +475,7 @@ class Tracer:
         }
 
         self.chat_messages.append(message_data)
+        self.chat_messages_by_agent.setdefault(agent_id, []).append(message_data)
         self._emit_event(
             "chat.message",
             actor={"agent_id": agent_id, "role": role},

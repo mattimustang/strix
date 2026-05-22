@@ -1477,8 +1477,7 @@ class StrixTUIApp(App):  # type: ignore[misc]
                 "id": f"chat_{msg['message_id']}",
                 "data": msg,
             }
-            for msg in self.tracer.chat_messages
-            if msg.get("agent_id") == agent_id
+            for msg in self.tracer.chat_messages_by_agent.get(agent_id, [])
         ]
 
         agent_data = self.tracer.agents.get(agent_id, {})
