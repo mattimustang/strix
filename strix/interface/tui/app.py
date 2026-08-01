@@ -1012,7 +1012,8 @@ class StrixTUIApp(App):  # type: ignore[misc]
 
         self._update_chat_view()
 
-        self._update_agent_status_display()
+        if self._dot_animation_timer is None:
+            self._update_agent_status_display()
 
         self._update_stats_display()
 
@@ -1455,6 +1456,7 @@ class StrixTUIApp(App):  # type: ignore[misc]
             status = agent_data.get("status", "running")
             if status in ["running", "waiting"]:
                 has_active_agents = True
+            if status == "running":
                 num_colors = len(self._sweep_colors)
                 offset = num_colors - 1
                 max_pos = (self._sweep_num_squares - 1) + offset
