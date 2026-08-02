@@ -4,13 +4,39 @@ from typing import Any, ClassVar
 from textual.widgets import Static
 
 
+_TERMINAL_STATUSES = ("completed", "failed", "error")
+_CACHE_SIZE_LIMIT = 200
+
+
 class BaseToolRenderer(ABC):
     tool_name: ClassVar[str] = ""
     css_classes: ClassVar[list[str]] = ["tool-call"]
+    _cache: ClassVar[dict[tuple[str, str, str, str], Static]] = {}
+
+    @classmethod
+    def render(cls, tool_data: dict[str, Any]) -> Static:
+        status = tool_data.get("status", "")
+        # call_id is provider-assigned per agent conversation, not globally unique;
+        # two agents can receive the same id, so agent_id must be part of the key.
+        call_id = tool_data.get("call_id")
+        agent_id = tool_data.get("agent_id")
+        if status not in _TERMINAL_STATUSES or not call_id or not agent_id:
+            return cls._build(tool_data)
+
+        key = (cls.tool_name, str(agent_id), str(call_id), status)
+        cached = cls._cache.get(key)
+        if cached is not None:
+            return cached
+
+        widget = cls._build(tool_data)
+        if len(cls._cache) > _CACHE_SIZE_LIMIT:
+            cls._cache.clear()
+        cls._cache[key] = widget
+        return widget
 
     @classmethod
     @abstractmethod
-    def render(cls, tool_data: dict[str, Any]) -> Static:
+    def _build(cls, tool_data: dict[str, Any]) -> Static:
         pass
 
     @classmethod
